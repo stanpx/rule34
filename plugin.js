@@ -45,7 +45,7 @@ export const BOORU_HOSTS = [
     id: "r34paheal",
     name: "Paheal Booru",
     base: "https://rule34.paheal.net",
-    type: "booru_api",
+    type: "paheal",
     enabled: true
   },
   {
@@ -191,13 +191,17 @@ function isVideoUrl(url, extHint = "") {
 }
 
 /**
- * Determina el tipo MIME correspondiente a la extensión de video
+ * Determina el tipo MIME correspondiente a la extensión de video o devuelve undefined
+ * para que el reproductor nativo (ExoPlayer/MPV) detecte el contenedor automáticamente.
  */
-function getMimeType(url) {
-  const clean = (url || "").toLowerCase().split("?")[0];
-  if (clean.endsWith(".webm")) return "video/webm";
-  if (clean.endsWith(".m3u8")) return "application/x-mpegURL";
-  return "video/mp4";
+function getMimeType(url, hintMime = "") {
+  if (hintMime && String(hintMime).startsWith("video/")) return hintMime;
+  const clean = (url || "").toLowerCase();
+  if (clean.includes(".webm") || clean.includes("format=webm") || clean.includes("video/webm")) return "video/webm";
+  if (clean.includes(".m3u8") || clean.includes(".m3u")) return "application/x-mpegURL";
+  if (clean.includes(".mp4") || clean.includes("format=mp4") || clean.includes("video/mp4")) return "video/mp4";
+  if (clean.includes(".mkv")) return "video/x-matroska";
+  return undefined;
 }
 
 /**
@@ -618,6 +622,76 @@ function normalizeBooruPost(raw, hostConfig, asSeries = false) {
 }
 
 /**
+ * Realiza búsquedas e indexación en sitios basados en Shimmie (como rule34.paheal.net)
+ */
+async function searchPahealHost(hostConfig, queryVariants, page = 1) {
+  const cleanHost = hostConfig.base.replace(/\/+$/, "");
+  const results = [];
+  const seenIds = new Set();
+
+  for (const tag of queryVariants.booruTags) {
+    if (results.length >= 25) break;
+    const url = `${cleanHost}/post/list/${encodeURIComponent(tag)}/${page}`;
+    try {
+      const html = await fetchPage(url, cleanHost);
+      const parts = html.split("shm-thumb thumb");
+
+      for (let i = 1; i < parts.length && results.length < 25; i++) {
+        const block = parts[i];
+        const idM = block.match(/data-post-id=['"](\d+)['"]/);
+        if (!idM) continue;
+        const postId = idM[1];
+
+        if (seenIds.has(postId)) continue;
+        seenIds.add(postId);
+
+        const fileM = block.match(/href=['"](https?:\/\/[^'"]*paheal-cdn\.net\/[^'"]+)['"][^>]*>File Only<\/a>/i);
+        const directUrl = fileM ? fileM[1] : "";
+
+        const posterM = block.match(/src=['"](https?:\/\/[^'"]*paheal\.net\/[^'"]+)['"]/i);
+        const poster = posterM ? posterM[1] : "";
+
+        const mimeM = block.match(/data-mime=['"]([^'"]+)['"]/i);
+        const mime = mimeM ? mimeM[1] : "video/mp4";
+
+        const tagsM = block.match(/data-tags=['"]([^'"]*)['"]/i);
+        const rawTags = tagsM ? tagsM[1].replace(/&#039;/g, "'").replace(/&quot;/g, '"') : "";
+
+        const isVideo = mime.startsWith("video/") || isVideoUrl(directUrl) || rawTags.includes("video") || rawTags.includes("animated");
+        if (!isVideo && !directUrl) continue;
+
+        const titleWords = rawTags.split(/\s+/).slice(0, 6).join(" ").replace(/_/g, " ");
+        const title = titleWords || `Paheal #${postId}`;
+
+        const ref = JSON.stringify({
+          type: "direct",
+          url: directUrl,
+          host: cleanHost,
+          path: `/post/view/${postId}`,
+          title,
+          mime
+        });
+
+        results.push({
+          id: sanitizeId(`paheal_${postId}`, "bv_"),
+          ref,
+          title,
+          kind: "movie",
+          poster,
+          backdrop: poster,
+          adult: false,
+          genres: ["anime", "otros"]
+        });
+      }
+    } catch {
+      // Continuar silenciosamente al siguiente término
+    }
+  }
+
+  return results;
+}
+
+/**
  * Consulta endpoints de APIs Booru sin forzar tags restrictivos que causen respuestas vacías
  */
 async function queryBooruApi(hostConfig, queryVariants, page = 1, asSeries = false) {
@@ -678,21 +752,22 @@ async function queryBooruApi(hostConfig, queryVariants, page = 1, asSeries = fal
  * Analiza el HTML del reproductor de video para localizar la URL de streaming (.mp4/.webm)
  */
 function extractVideoStream(html, baseHost) {
-  if (!html) return "";
+  if (!html) return null;
 
-  // 1. Etiqueta <source src="..." type="video/...">
-  const sourceMatches = html.matchAll(/<source[^>]+src=["']([^"']+)["'][^>]*>/gi);
+  // 1. Etiqueta <source src="..." type="...">
+  const sourceMatches = html.matchAll(/<source[^>]+src=["']([^"']+)["'](?:[^>]*type=["']([^"']+)["'])?[^>]*>/gi);
   for (const m of sourceMatches) {
     const src = m[1];
-    if (isVideoUrl(src) || m[0].includes("video/mp4") || m[0].includes("video/webm")) {
-      return abs(src, baseHost);
+    const type = m[2] || "";
+    if (isVideoUrl(src) || type.startsWith("video/")) {
+      return { url: abs(src, baseHost), mime: type || getMimeType(src) };
     }
   }
 
   // 2. Etiqueta <video src="...">
   const videoM = html.match(/<video[^>]+src=["']([^"']+)["']/i);
   if (videoM && isVideoUrl(videoM[1])) {
-    return abs(videoM[1], baseHost);
+    return { url: abs(videoM[1], baseHost), mime: getMimeType(videoM[1]) };
   }
 
   // 3. Variables JavaScript de reproductores web comunes
@@ -710,7 +785,7 @@ function extractVideoStream(html, baseHost) {
     if (match && match[1]) {
       const decoded = match[1].replace(/\\/g, "");
       if (isVideoUrl(decoded)) {
-        return abs(decoded, baseHost);
+        return { url: abs(decoded, baseHost), mime: getMimeType(decoded) };
       }
     }
   }
@@ -718,17 +793,18 @@ function extractVideoStream(html, baseHost) {
   // 4. Búsqueda de URLs CDN completas de video en el script/markup
   const cdnMatch = html.match(/https?:\/\/[^\s"'<>]+\.(?:mp4|webm|m3u8)(?:\?[^\s"'<>]*)?/i);
   if (cdnMatch) {
-    return cdnMatch[0].replace(/&amp;/g, "&");
+    const u = cdnMatch[0].replace(/&amp;/g, "&");
+    return { url: u, mime: getMimeType(u) };
   }
 
   // 5. Enlaces de descarga directos (<a href="...mp4" download>)
   const downloadM = html.match(/<a[^>]+href=["']([^"']+\.(?:mp4|webm)[^"']*)["'][^>]*download/i) ||
                     html.match(/<a[^>]+download[^>]*href=["']([^"']+\.(?:mp4|webm)[^"']*)["']/i);
   if (downloadM && downloadM[1]) {
-    return abs(downloadM[1], baseHost);
+    return { url: abs(downloadM[1], baseHost), mime: getMimeType(downloadM[1]) };
   }
 
-  return "";
+  return null;
 }
 
 /**
@@ -751,9 +827,10 @@ export async function resolve(ref) {
 
   // Si la referencia ya contenía la URL directa
   if (target.url && (isVideoUrl(target.url) || target.type === "direct")) {
+    const mime = getMimeType(target.url, target.mime);
     return {
       url: target.url,
-      mime: getMimeType(target.url),
+      ...(mime ? { mime } : {}),
       headers: {
         "User-Agent": USER_AGENT,
         ...(target.host ? { "Referer": target.host.endsWith("/") ? target.host : target.host + "/" } : {})
@@ -778,15 +855,17 @@ export async function resolve(ref) {
   const pageUrl = abs(pagePath, hostBase);
   logInfo(`[rule34] Resolviendo video en: ${pageUrl}`);
   const html = await fetchPage(pageUrl, hostBase);
-  const streamUrl = extractVideoStream(html, hostBase);
+  const extracted = extractVideoStream(html, hostBase);
 
-  if (!streamUrl) {
+  if (!extracted || !extracted.url) {
     throw kinoError("not_found", "No se encontró enlace de video en la página", "No fue posible extraer la transmisión de video.");
   }
 
+  const streamMime = extracted.mime || getMimeType(extracted.url, target.mime);
+
   return {
-    url: streamUrl,
-    mime: getMimeType(streamUrl),
+    url: extracted.url,
+    ...(streamMime ? { mime: streamMime } : {}),
     headers: {
       "User-Agent": USER_AGENT,
       "Referer": hostBase.endsWith("/") ? hostBase : hostBase + "/"
@@ -818,16 +897,20 @@ async function fetchCategoryItems(cat, page = 1, limit = MAX_ROW) {
   if (items.length === 0 && cat.tag) {
     const queryVariants = normalizeSearchQueries(cat.tag);
     for (const hostConfig of BOORU_HOSTS) {
-      if (hostConfig.type === "booru_api" && hostConfig.enabled) {
-        try {
-          const booruItems = await queryBooruApi(hostConfig, queryVariants, page, false);
-          if (booruItems && booruItems.length > 0) {
-            items = booruItems.slice(0, limit);
-            break;
-          }
-        } catch {
-          // Continuar al siguiente host
+      if (!hostConfig.enabled) continue;
+      try {
+        let booruItems = [];
+        if (hostConfig.type === "paheal") {
+          booruItems = await searchPahealHost(hostConfig, queryVariants, page);
+        } else if (hostConfig.type === "booru_api") {
+          booruItems = await queryBooruApi(hostConfig, queryVariants, page, false);
         }
+        if (booruItems && booruItems.length > 0) {
+          items = booruItems.slice(0, limit);
+          break;
+        }
+      } catch {
+        // Continuar al siguiente host
       }
     }
   }
@@ -984,6 +1067,8 @@ export async function search(query) {
     try {
       if (hostConfig.type === "tube") {
         return await searchTubeHost(hostConfig, queryVariants, page, asSeries);
+      } else if (hostConfig.type === "paheal") {
+        return await searchPahealHost(hostConfig, queryVariants, page);
       } else if (hostConfig.type === "booru_api") {
         return await queryBooruApi(hostConfig, queryVariants, page, asSeries);
       }
