@@ -1,7 +1,7 @@
 {
   "id": "rule34",
   "name": "Rule 34",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "apiVersion": 6,
   "entry": "plugin.js",
   "icon": "icon.png",
@@ -21,7 +21,8 @@
     "booru.org",
     "xbooru.com",
     "rule34.xxx",
-    "e621.net"
+    "e621.net",
+    "safebooru.org"
   ],
   "streamHosts": "any",
   "categories": [
@@ -38,6 +39,6 @@
   ],
   "signature": {
     "authorKey": "6f5fc734f744d974a1fe0c21a0e7edf6e0c9ff2e35a01ffc12d9abad629d55ef",
-    "value": "956fba1b965fbc297f223b9e168288ad2358f275b2ea5fad78290a2e200998462b835fd955ab4f414588e62f466c48fd7805482952dafae3928bef1627a3f40f"
+    "value": "58db43b03b6ca283a2ef2d6a5ca5412c775bf4ad5552b43af0621a28f2256963234ae5a85908abe3a04ed2647aa5dfcbb93269ecfc110ee5ceb2a5d7c184e607"
   }
 }

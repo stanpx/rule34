@@ -106,19 +106,19 @@ const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".mkv", ".avi", ".m3u", ".m3u
 
 // Categorías destacadas para la pantalla principal (Home) y navegación
 const HOME_ROWS = [
-  { id: "newest", title: "🔥 Más recientes", path: "/&ajax&p=1", genre: "otros" },
-  { id: "top", title: "⭐ Mejor valorados", path: "/videos/top-rated/&ajax&p=1", genre: "otros" },
-  { id: "viewed", title: "👁️ Más vistos", path: "/videos/most-viewed/&ajax&p=1", genre: "otros" },
-  { id: "cats", title: "🐱 Gatos & Mascotas (Regla 00)", path: "/show/cats?ajax&sort=toprated", genre: "documentales" },
-  { id: "3d", title: "🎨 Animación 3D", path: "/show/3d?ajax&sort=toprated", genre: "anime" },
-  { id: "parodies", title: "🎭 Parodias", path: "/show/parodies?ajax&sort=toprated", genre: "entretenimiento" },
-  { id: "robots", title: "🤖 Robots", path: "/show/robots?ajax&sort=toprated", genre: "anime" },
-  { id: "furry", title: "🐾 Furry & Antro", path: "/show/furry?ajax&sort=toprated", genre: "anime" },
-  { id: "aliens", title: "👽 Aliens", path: "/show/aliens?ajax&sort=toprated", genre: "otros" },
-  { id: "monsters", title: "👾 Monstruos", path: "/show/monsters?ajax&sort=toprated", genre: "otros" },
-  { id: "femboy", title: "✨ Femboys", path: "/show/femboys?ajax&sort=toprated", genre: "entretenimiento" },
-  { id: "lesbians", title: "🌸 Lesbianas", path: "/show/lesbians?ajax&sort=toprated", genre: "entretenimiento" },
-  { id: "tentacles", title: "🦑 Tentáculos", path: "/show/tentacles?ajax&sort=toprated", genre: "entretenimiento" }
+  { id: "newest", title: "🔥 Más recientes", tag: "animated", path: "/&ajax&p=1", genre: "otros" },
+  { id: "top", title: "⭐ Mejor valorados", tag: "score:>10", path: "/videos/top-rated/&ajax&p=1", genre: "otros" },
+  { id: "viewed", title: "👁️ Más vistos", tag: "animated", path: "/videos/most-viewed/&ajax&p=1", genre: "otros" },
+  { id: "cats", title: "🐱 Gatos & Mascotas (Regla 00)", tag: "cat", path: "/show/cats?ajax&sort=toprated", genre: "documentales" },
+  { id: "3d", title: "🎨 Animación 3D", tag: "3d", path: "/show/3d?ajax&sort=toprated", genre: "anime" },
+  { id: "parodies", title: "🎭 Parodias", tag: "parody", path: "/show/parodies?ajax&sort=toprated", genre: "entretenimiento" },
+  { id: "robots", title: "🤖 Robots", tag: "robot", path: "/show/robots?ajax&sort=toprated", genre: "anime" },
+  { id: "furry", title: "🐾 Furry & Antro", tag: "furry", path: "/show/furry?ajax&sort=toprated", genre: "anime" },
+  { id: "aliens", title: "👽 Aliens", tag: "alien", path: "/show/aliens?ajax&sort=toprated", genre: "otros" },
+  { id: "monsters", title: "👾 Monstruos", tag: "monster", path: "/show/monsters?ajax&sort=toprated", genre: "otros" },
+  { id: "femboy", title: "✨ Femboys", tag: "femboy", path: "/show/femboys?ajax&sort=toprated", genre: "entretenimiento" },
+  { id: "lesbians", title: "🌸 Lesbianas", tag: "lesbian", path: "/show/lesbians?ajax&sort=toprated", genre: "entretenimiento" },
+  { id: "tentacles", title: "🦑 Tentáculos", tag: "tentacles", path: "/show/tentacles?ajax&sort=toprated", genre: "entretenimiento" }
 ];
 
 // ============================================================================
@@ -753,6 +753,43 @@ export async function resolve(ref) {
 // ============================================================================
 
 /**
+ * Obtiene elementos de catálogo para una categoría con fallback automático a APIs Booru
+ */
+async function fetchCategoryItems(cat, page = 1, limit = MAX_ROW) {
+  let items = [];
+
+  // 1. Intentar scraping en host Tube
+  try {
+    let p = cat.path || "/&ajax&p=1";
+    if (page > 1) p += `&p=${page}`;
+    const html = await fetchPage(p, BASE);
+    items = parseItems(html, limit, BASE);
+  } catch {
+    items = [];
+  }
+
+  // 2. Fallback a APIs Booru si el host Tube no devolvió elementos
+  if (items.length === 0 && cat.tag) {
+    const queryVariants = normalizeSearchQueries(cat.tag);
+    for (const hostConfig of BOORU_HOSTS) {
+      if (hostConfig.type === "booru_api" && hostConfig.enabled) {
+        try {
+          const booruItems = await queryBooruApi(hostConfig, queryVariants, page, false);
+          if (booruItems && booruItems.length > 0) {
+            items = booruItems.slice(0, limit);
+            break;
+          }
+        } catch {
+          // Continuar al siguiente host
+        }
+      }
+    }
+  }
+
+  return items;
+}
+
+/**
  * Función home: Filas destacadas para la pantalla de inicio de Kino
  */
 export async function home() {
@@ -761,13 +798,12 @@ export async function home() {
 
   const promises = initialRows.map(async (cat) => {
     try {
-      const html = await fetchPage(cat.path, BASE);
-      const items = parseItems(html, MAX_ROW, BASE);
+      const items = await fetchCategoryItems(cat, 1, MAX_ROW);
       if (items.length > 0) {
         return {
           id: cat.id,
           title: cat.title,
-          ref: cat.path,
+          ref: JSON.stringify({ id: cat.id, tag: cat.tag, path: cat.path }),
           genre: cat.genre || "otros",
           items
         };
@@ -793,18 +829,20 @@ export async function home() {
  */
 export async function browse(ref, cursor) {
   const page = cursor ? parseInt(cursor, 10) || 1 : 1;
-  let path = ref || "/&ajax&p=1";
+  let catInfo = null;
 
-  if (path.includes("&p=") || path.includes("?p=")) {
-    path = path.replace(/([?&]p=)\d+/, `$1${page}`);
+  if (ref) {
+    try {
+      catInfo = JSON.parse(ref);
+    } catch {
+      catInfo = HOME_ROWS.find((r) => r.path === ref || r.id === ref) || { path: ref, tag: ref };
+    }
   } else {
-    path += (path.includes("?") ? "&" : "?") + "p=" + page;
+    catInfo = HOME_ROWS[0];
   }
 
-  const html = await fetchPage(path, BASE);
-  const items = parseItems(html, MAX_BROWSE, BASE);
-  const nextPage = nextFromHtml(html, path);
-  const next = nextPage && items.length >= 8 ? String(parseInt(nextPage, 10) || page + 1) : undefined;
+  const items = await fetchCategoryItems(catInfo, page, MAX_BROWSE);
+  const next = items.length >= 8 ? String(page + 1) : undefined;
 
   return { items, ...(next ? { next } : {}) };
 }
@@ -816,7 +854,7 @@ export async function categories() {
   return HOME_ROWS.map((row) => ({
     id: row.id,
     title: row.title,
-    ref: row.path,
+    ref: JSON.stringify({ id: row.id, tag: row.tag, path: row.path }),
     genre: row.genre || "otros"
   }));
 }
