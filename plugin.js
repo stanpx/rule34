@@ -48,9 +48,9 @@ export const BOORU_HOSTS = [
     type: "booru_api",
     enabled: true
   },
-   {
+  {
     id: "r34xxx",
-    name: "Paheal Booru",
+    name: "Rule34 XXX",
     base: "https://rule34.xxx",
     type: "booru_api",
     enabled: true
@@ -102,7 +102,10 @@ const DEFAULT_HEADERS = {
 };
 
 // Extensiones de archivo admitidas como video o animación
-const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".mkv", ".avi", ".m3u", ".m3u8", ".m4v", ".gif"];
+const VIDEO_EXTENSIONS = [
+  ".mp4", ".webm", ".mov", ".mkv", ".avi", ".m3u", ".m3u8", ".m4v",
+  ".gif", ".gifv", ".flv", ".ts", ".ogv", ".apng", ".webp", ".wmv", ".3gp"
+];
 
 // Categorías destacadas para la pantalla principal (Home) y navegación
 const HOME_ROWS = [
@@ -173,14 +176,18 @@ function sanitizeId(str, prefix = "") {
 }
 
 /**
- * Comprueba si una URL o extensión corresponde a un archivo de video
+ * Comprueba si una URL o extensión corresponde a un archivo de video o animación
  */
 function isVideoUrl(url, extHint = "") {
   if (!url && !extHint) return false;
-  const clean = (url || "").toLowerCase().split("?")[0];
-  const cleanExt = (extHint || "").toLowerCase().replace(/^\./, "");
-  if (["mp4", "webm", "mov", "mkv", "m4v"].includes(cleanExt)) return true;
-  return VIDEO_EXTENSIONS.some((ext) => clean.endsWith(ext));
+  const lowerUrl = (url || "").toLowerCase();
+  const lowerExt = (extHint || "").toLowerCase().replace(/^\./, "");
+  const allVideoExts = [
+    "mp4", "webm", "mov", "mkv", "m4v", "avi", "flv", "m3u8", "ts", "ogv",
+    "gif", "gifv", "apng", "webp", "wmv", "3gp", "m4p", "mpg", "mpeg"
+  ];
+  if (allVideoExts.includes(lowerExt)) return true;
+  return allVideoExts.some((ext) => lowerUrl.includes("." + ext));
 }
 
 /**
@@ -322,7 +329,7 @@ async function fetchPage(pathOrUrl, baseHost = BASE) {
 }
 
 /**
- * Petición HTTP GET para obtener JSON
+ * Petición HTTP GET para obtener JSON de manera segura
  */
 async function fetchJson(url, baseHost = BASE) {
   const fullUrl = abs(url, baseHost);
@@ -338,15 +345,33 @@ async function fetchJson(url, baseHost = BASE) {
       headers,
       timeoutMs: 15000
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status} (${fullUrl})`);
-    return await res.json();
+    if (!res.ok) {
+      if (res.status === 204) return [];
+      throw new Error(`HTTP ${res.status} (${fullUrl})`);
+    }
+    const text = await res.text();
+    if (!text || !text.trim()) return [];
+    try {
+      return JSON.parse(text);
+    } catch {
+      return [];
+    }
   }
 
   const testFetch = globalThis["fetch"];
   if (typeof testFetch === "function") {
     const res = await testFetch(fullUrl, { headers });
-    if (!res.ok) throw new Error(`HTTP ${res.status} (${fullUrl})`);
-    return await res.json();
+    if (!res.ok) {
+      if (res.status === 204) return [];
+      throw new Error(`HTTP ${res.status} (${fullUrl})`);
+    }
+    const text = await res.text();
+    if (!text || !text.trim()) return [];
+    try {
+      return JSON.parse(text);
+    } catch {
+      return [];
+    }
   }
 
   throw new Error("No hay cliente HTTP disponible");
@@ -406,7 +431,7 @@ function itemFromThumb(html, baseHost = BASE, asSeries = false) {
     backdrop,
     runtimeMinutes,
     rating,
-    adult: true,
+    adult: false,
     genres: ["otros"]
   };
 }
@@ -517,14 +542,18 @@ function normalizeBooruPost(raw, hostConfig, asSeries = false) {
     videoUrl = raw.file.url;
   }
 
-  const ext = raw.file_ext || raw.format || "";
-  const isVideo = isVideoUrl(videoUrl, ext);
-  const tagsStr = String(raw.tags || raw.tag_string || "");
+  const cleanExt = (raw.file_ext || raw.format || "").toLowerCase().replace(/^\./, "");
+  const isVideo = isVideoUrl(videoUrl, cleanExt);
+  const tagsStr = String(raw.tags || raw.tag_string || "").toLowerCase();
   const isAnimated = tagsStr.includes("animated") || tagsStr.includes("video") || tagsStr.includes("animation");
 
-  // Aceptar si es video directo o si está explícitamente etiquetado como animación
+  // Si no tiene URL de archivo, no se puede reproducir
+  if (!videoUrl) return null;
+
+  // Aceptar si es video directo, animación o archivo multimedia apto
   if (!isVideo && !isAnimated) {
-    return null;
+    const isStatic = ["jpg", "jpeg", "png", "bmp"].includes(cleanExt);
+    if (isStatic) return null;
   }
 
   const cleanVideoUrl = abs(videoUrl || raw.file_url, hostConfig.base);
@@ -583,7 +612,7 @@ function normalizeBooruPost(raw, hostConfig, asSeries = false) {
     kind: asSeries ? "series" : "movie",
     poster,
     backdrop: poster,
-    adult: true,
+    adult: false,
     genres: ["anime", "otros"]
   };
 }
@@ -600,13 +629,13 @@ async function queryBooruApi(hostConfig, queryVariants, page = 1, asSeries = fal
     if (results.length >= 20) break;
     const encoded = encodeURIComponent(tag);
 
-    // Variantes de endpoints REST para Boorus
+    // Variantes de endpoints REST para Boorus (priorizando animados/videos primero)
     const endpoints = [
-      `${cleanHost}/posts.json?tags=${encoded}&limit=40&page=${page}`,
-      `${cleanHost}/index.php?page=dapi&s=post&q=index&json=1&tags=${encoded}&limit=40&pid=${page}`,
-      `${cleanHost}/api/v1/json/search/posts?q=${encoded}&page=${page}`,
       `${cleanHost}/posts.json?tags=${encoded}+animated&limit=40&page=${page}`,
-      `${cleanHost}/index.php?page=dapi&s=post&q=index&json=1&tags=${encoded}+animated&limit=40&pid=${page}`
+      `${cleanHost}/posts.json?tags=${encoded}&limit=50&page=${page}`,
+      `${cleanHost}/index.php?page=dapi&s=post&q=index&json=1&tags=${encoded}+animated&limit=40&pid=${page}`,
+      `${cleanHost}/index.php?page=dapi&s=post&q=index&json=1&tags=${encoded}&limit=50&pid=${page}`,
+      `${cleanHost}/api/v1/json/search/posts?q=${encoded}&page=${page}`
     ];
 
     for (const url of endpoints) {
@@ -630,7 +659,7 @@ async function queryBooruApi(hostConfig, queryVariants, page = 1, asSeries = fal
               results.push(it);
             }
           }
-          if (results.length > 0) break;
+          if (results.length >= 15) break;
         }
       } catch {
         // Continuar silenciosamente al siguiente endpoint
@@ -997,7 +1026,7 @@ export async function search(query) {
       ref: fallbackRef,
       title: `${q}`,
       kind: asSeries ? "series" : "movie",
-      adult: true,
+      adult: false,
       genres: ["otros"]
     });
   }
