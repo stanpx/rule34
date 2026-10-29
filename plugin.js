@@ -109,6 +109,7 @@ const VIDEO_EXTENSIONS = [
 
 // Categorías destacadas para la pantalla principal (Home) y navegación
 const HOME_ROWS = [
+  { id: "atf_video", title: "🎬 Videos ATF (AllTheFallen)", tag: "video", source: "atf", genre: "anime" },
   { id: "newest", title: "🔥 Más recientes", tag: "animated", path: "/&ajax&p=1", genre: "otros" },
   { id: "top", title: "⭐ Mejor valorados", tag: "score:>10", path: "/videos/top-rated/&ajax&p=1", genre: "otros" },
   { id: "viewed", title: "👁️ Más vistos", tag: "animated", path: "/videos/most-viewed/&ajax&p=1", genre: "otros" },
@@ -283,7 +284,7 @@ function normalizeSearchQueries(rawQuery) {
 // 3. CAPA DE RED (QUICKJS / KINO.FETCH)
 // ============================================================================
 
-const DEFAULT_ATF_COOKIE = "atf-anti-bot=1793846173.zG9F8Jlj.mNds6L9QMqhBEZ5ZydoFtUzqWw8=; news-ticker=0";
+const DEFAULT_ATF_COOKIE = "atf-anti-bot=1793846173.zG9F8Jlj.mNds6L9QMqhBEZ5ZydoFtUzqWw8=; _danbooru2_session=KSJrqVpswehjoFFHZAb%2Ba1ZXmvmJGBklxWMexibx6zbfT71sP5efAPZ0XrL2gYmWgFHEvM17mrFhr%2BpyUXZg2ncEhG7VX%2Bol7KfZs6f8z92OazD%2F61qfsyNJIpM2Js4um8LA5%2B9mL0h2i2RYQFrUu5jueUehbaqTWBIuLJPijj1Xc%2BsA%2FuaH5N20bDZLvv48cuh1abF5IIOwQBZelUMoXurYh0L5ugPToqDbWF5zpp%2BbxKvI3HBKSvBZdTj48jaxvBbOjO1%2Fj8plBnBjsR4Og8d2G7YKIrxj0sLTeWcZ0wUrrvBV8VC3nZdHug374nf19i8hSZrkNqhXrvBJN8yBDxtXG2u6rqVAYxpq0V3zkIs0yD5AXN6yJhefhIT0BsD3SbhH%2BMdy6lNaCfi7miuSWZW9wd5izu5iyj6RbNQVgmO9cBr3hzEkrkRdJhS%2FgvSn6zByHNiTUm1py%2FAqy1TXIN2i%2FwVX6wx82oPQKI8Ph15OhiJi4jqvYA6BLmRETvxtFhpaqlhvIiG35dU8nzTcNFHnmtaQdm3GA%2FyxxcV7AvB40DfMKPeuYIaPJY3M5bDdopRTzVMg5brt1sOVf7eETYLDY5mVmAVJKz7GTQnjhh2k0l9d--Z%2B7Db1DMN48D0lJ%2F--UaMwPGiT1swej78KXrIYOQ%3D%3D; news-ticker=0";
 
 /**
  * Obtiene la cookie para AllTheFallen (configurada por el usuario o token anti-bot por defecto)
@@ -301,7 +302,7 @@ function getAtfCookie() {
  */
 function applyHostSpecificHeaders(headers, targetUrl) {
   if (targetUrl.includes("e621.net")) {
-    headers["User-Agent"] = "Rule34Kino/1.0.6 (by stanpx on github)";
+    headers["User-Agent"] = "Rule34Kino/1.0.7 (by stanpx on github)";
   }
   if (targetUrl.includes("allthefallen.moe")) {
     headers["Cookie"] = getAtfCookie();
@@ -917,17 +918,36 @@ export async function resolve(ref) {
 async function fetchCategoryItems(cat, page = 1, limit = MAX_ROW) {
   let items = [];
 
-  // 1. Intentar scraping en host Tube
-  try {
-    let p = cat.path || "/&ajax&p=1";
-    if (page > 1) p += `&p=${page}`;
-    const html = await fetchPage(p, BASE);
-    items = parseItems(html, limit, BASE);
-  } catch {
-    items = [];
+  // 1. Si la categoría es de AllTheFallen o solicita source 'atf'
+  if (cat.source === "atf" || cat.id === "atf_video") {
+    const atfHost = BOORU_HOSTS.find((h) => h.id === "r34atf") || {
+      id: "r34atf",
+      name: "Rule34 ATF",
+      base: "https://booru.allthefallen.moe",
+      type: "booru_api",
+      enabled: true
+    };
+    try {
+      const atfItems = await queryBooruApi(atfHost, { booruTags: [cat.tag || "video"], tubeTags: [] }, page, false);
+      if (atfItems && atfItems.length > 0) return atfItems.slice(0, limit);
+    } catch (err) {
+      logWarn(`[rule34] Fallo al cargar categoría ATF: ${err?.message || err}`);
+    }
   }
 
-  // 2. Fallback a APIs Booru si el host Tube no devolvió elementos
+  // 2. Intentar scraping en host Tube si dispone de ruta
+  if (cat.path) {
+    try {
+      let p = cat.path;
+      if (page > 1) p += `&p=${page}`;
+      const html = await fetchPage(p, BASE);
+      items = parseItems(html, limit, BASE);
+    } catch {
+      items = [];
+    }
+  }
+
+  // 3. Fallback a APIs Booru si el host Tube no devolvió elementos
   if (items.length === 0 && cat.tag) {
     const queryVariants = normalizeSearchQueries(cat.tag);
     for (const hostConfig of BOORU_HOSTS) {
@@ -966,7 +986,7 @@ export async function home() {
         return {
           id: cat.id,
           title: cat.title,
-          ref: JSON.stringify({ id: cat.id, tag: cat.tag, path: cat.path }),
+          ref: JSON.stringify({ id: cat.id, tag: cat.tag, path: cat.path, source: cat.source }),
           genre: cat.genre || "otros",
           items
         };
@@ -1017,7 +1037,7 @@ export async function categories() {
   return HOME_ROWS.map((row) => ({
     id: row.id,
     title: row.title,
-    ref: JSON.stringify({ id: row.id, tag: row.tag, path: row.path }),
+    ref: JSON.stringify({ id: row.id, tag: row.tag, path: row.path, source: row.source }),
     genre: row.genre || "otros"
   }));
 }

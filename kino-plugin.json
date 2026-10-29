@@ -1,7 +1,7 @@
 {
   "id": "rule34",
   "name": "Rule 34",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "apiVersion": 6,
   "entry": "plugin.js",
   "icon": "icon.png",
@@ -47,6 +47,6 @@
   ],
   "signature": {
     "authorKey": "6f5fc734f744d974a1fe0c21a0e7edf6e0c9ff2e35a01ffc12d9abad629d55ef",
-    "value": "aff306c8de33dd6566a42b22b6a4e2e6dea0ce6325cdbe2fa5cca982330b4caa8dcbc6b5aa18c14171a13c92cbf14e6aac5d96bb4e52cfdb820c298f74938108"
+    "value": "ff57cf28510adcb16379e3f41f3896a9b073a01b8e99a3d48047a2077f0e619abdb94b5cfa50a921c4b27d9279bbb3cbadec881dd6676ded264bfac4c4e32804"
   }
 }
