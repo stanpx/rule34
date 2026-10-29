@@ -283,18 +283,28 @@ function normalizeSearchQueries(rawQuery) {
 // 3. CAPA DE RED (QUICKJS / KINO.FETCH)
 // ============================================================================
 
+const DEFAULT_ATF_COOKIE = "atf-anti-bot=1793846173.zG9F8Jlj.mNds6L9QMqhBEZ5ZydoFtUzqWw8=; news-ticker=0";
+
+/**
+ * Obtiene la cookie para AllTheFallen (configurada por el usuario o token anti-bot por defecto)
+ */
+function getAtfCookie() {
+  if (typeof kino !== "undefined" && kino.config) {
+    const custom = kino.config.get("atfCookie");
+    if (custom && custom.trim()) return custom.trim();
+  }
+  return DEFAULT_ATF_COOKIE;
+}
+
 /**
  * Aplica cabeceras específicas por host (User-Agent específico para e621 o Cookie para AllTheFallen)
  */
 function applyHostSpecificHeaders(headers, targetUrl) {
   if (targetUrl.includes("e621.net")) {
-    headers["User-Agent"] = "Rule34Kino/1.0.3 (by stanpx on github)";
+    headers["User-Agent"] = "Rule34Kino/1.0.6 (by stanpx on github)";
   }
   if (targetUrl.includes("allthefallen.moe")) {
-    const atfCookie = typeof kino !== "undefined" && kino.config ? kino.config.get("atfCookie") : null;
-    if (atfCookie) {
-      headers["Cookie"] = atfCookie;
-    }
+    headers["Cookie"] = getAtfCookie();
   }
 }
 
@@ -537,13 +547,28 @@ function normalizeBooruPost(raw, hostConfig, asSeries = false) {
   if (!postId) return null;
 
   // Extraer URL del video o animación
-  let videoUrl = raw.file_url || raw.url || raw.video_url || raw.direct_url;
+  let videoUrl = raw.file_url || raw.url || raw.video_url || raw.direct_url || raw.large_file_url;
   if (!videoUrl && raw.media_asset && Array.isArray(raw.media_asset.variants)) {
     const orig = raw.media_asset.variants.find((v) => v.type === "original" || v.type === "sample");
     if (orig && orig.url) videoUrl = orig.url;
   }
   if (!videoUrl && raw.file && typeof raw.file === "object") {
     videoUrl = raw.file.url;
+  }
+  // Reconstrucción inteligente para Danbooru/ATF cuando file_url es null
+  if (!videoUrl && raw.media_asset && (raw.media_asset.pixel_hash || raw.md5)) {
+    const h = raw.media_asset.pixel_hash || raw.md5;
+    const fExt = raw.media_asset.file_ext || raw.file_ext || "mp4";
+    if (h && h.length >= 4) {
+      videoUrl = `${hostConfig.base}/data/original/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}.${fExt}`;
+    }
+  }
+  if (!videoUrl && raw.md5 && (raw.file_ext || hostConfig.base.includes("allthefallen"))) {
+    const h = raw.md5;
+    const fExt = raw.file_ext || "mp4";
+    if (h && h.length >= 4) {
+      videoUrl = `${hostConfig.base}/data/original/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}.${fExt}`;
+    }
   }
 
   const cleanExt = (raw.file_ext || raw.format || "").toLowerCase().replace(/^\./, "");
@@ -828,13 +853,17 @@ export async function resolve(ref) {
   // Si la referencia ya contenía la URL directa
   if (target.url && (isVideoUrl(target.url) || target.type === "direct")) {
     const mime = getMimeType(target.url, target.mime);
+    const headers = {
+      "User-Agent": USER_AGENT,
+      ...(target.host ? { "Referer": target.host.endsWith("/") ? target.host : target.host + "/" } : {})
+    };
+    if (target.url.includes("allthefallen.moe") || (target.host && target.host.includes("allthefallen.moe"))) {
+      headers["Cookie"] = getAtfCookie();
+    }
     return {
       url: target.url,
       ...(mime ? { mime } : {}),
-      headers: {
-        "User-Agent": USER_AGENT,
-        ...(target.host ? { "Referer": target.host.endsWith("/") ? target.host : target.host + "/" } : {})
-      }
+      headers
     };
   }
 
@@ -863,13 +892,18 @@ export async function resolve(ref) {
 
   const streamMime = extracted.mime || getMimeType(extracted.url, target.mime);
 
+  const headers = {
+    "User-Agent": USER_AGENT,
+    "Referer": hostBase.endsWith("/") ? hostBase : hostBase + "/"
+  };
+  if (extracted.url.includes("allthefallen.moe") || hostBase.includes("allthefallen.moe")) {
+    headers["Cookie"] = getAtfCookie();
+  }
+
   return {
     url: extracted.url,
     ...(streamMime ? { mime: streamMime } : {}),
-    headers: {
-      "User-Agent": USER_AGENT,
-      "Referer": hostBase.endsWith("/") ? hostBase : hostBase + "/"
-    }
+    headers
   };
 }
 
