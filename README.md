@@ -1,8 +1,8 @@
-# VideoBooru - Plugin de Agregación de Medios para Kino
+# Rule34 - Plugin de Agregación de Medios para Kino
 
 Plugin de agregación y reproducción de video desde plataformas de catálogo visual (Boorus). Desarrollado para fines estrictamente educativos y demostrativos bajo el entorno sandbox QuickJS de la aplicación Kino.
 
-> ⚠️ **CONTENIDO NO APTO PARA SENSIBLES (+16)**  
+> ⚠️ **CONTENIDO NO APTO PARA SENSIBLES (+18)**  
 > Este plugin agrega fuentes de video de la comunidad que pueden incluir material poco apropiado. Al instalar, aceptas ser mayor de edad y asumes total responsabilidad por el contenido que decidas visualizar. Este proyecto es con fines educativos y de ficción. No nos hacemos responsables. Sección 230.
 
 ---
