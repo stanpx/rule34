@@ -511,14 +511,35 @@ function normalizeBooruPost(raw, hostConfig, asSeries = false) {
     const prev = raw.media_asset.variants.find((v) => v.type === "preview" || v.type === "180x180");
     if (prev && prev.url) previewUrl = prev.url;
   }
+  if (!previewUrl && raw.preview && typeof raw.preview === "object" && raw.preview.url) {
+    previewUrl = raw.preview.url;
+  }
+  if (!previewUrl && raw.sample && typeof raw.sample === "object" && raw.sample.url) {
+    previewUrl = raw.sample.url;
+  }
   const poster = previewUrl ? abs(previewUrl, hostConfig.base) : "";
 
   // Título descriptivo generado a partir de etiquetas
   let title = "";
-  if (raw.tag_string_character) title = raw.tag_string_character.replace(/_/g, " ");
-  else if (raw.tag_string_copyright) title = raw.tag_string_copyright.replace(/_/g, " ");
-  else if (raw.tags) title = String(raw.tags).split(" ").slice(0, 5).join(" ").replace(/_/g, " ");
-  else if (raw.tag_string) title = String(raw.tag_string).split(" ").slice(0, 5).join(" ").replace(/_/g, " ");
+  if (raw.tags && typeof raw.tags === "object" && !Array.isArray(raw.tags)) {
+    const tagList = [
+      ...(Array.isArray(raw.tags.character) ? raw.tags.character : []),
+      ...(Array.isArray(raw.tags.copyright) ? raw.tags.copyright : []),
+      ...(Array.isArray(raw.tags.species) ? raw.tags.species : []),
+      ...(Array.isArray(raw.tags.general) ? raw.tags.general : [])
+    ];
+    if (tagList.length > 0) {
+      title = tagList.slice(0, 5).join(" ").replace(/_/g, " ");
+    }
+  } else if (raw.tag_string_character) {
+    title = raw.tag_string_character.replace(/_/g, " ");
+  } else if (raw.tag_string_copyright) {
+    title = raw.tag_string_copyright.replace(/_/g, " ");
+  } else if (typeof raw.tags === "string") {
+    title = raw.tags.split(" ").slice(0, 5).join(" ").replace(/_/g, " ");
+  } else if (raw.tag_string) {
+    title = String(raw.tag_string).split(" ").slice(0, 5).join(" ").replace(/_/g, " ");
+  }
 
   if (!title) title = `${hostConfig.name} #${postId}`;
 
