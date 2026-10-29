@@ -730,7 +730,7 @@ export async function resolve(ref) {
   }
 
   const pageUrl = abs(pagePath, hostBase);
-  logInfo(`[VideoBooru] Resolviendo video en: ${pageUrl}`);
+  logInfo(`[rule34] Resolviendo video en: ${pageUrl}`);
   const html = await fetchPage(pageUrl, hostBase);
   const streamUrl = extractVideoStream(html, hostBase);
 
@@ -773,7 +773,7 @@ export async function home() {
         };
       }
     } catch (err) {
-      logWarn(`[VideoBooru] Fallo cargando fila '${cat.title}': ${err?.message || err}`);
+      logWarn(`[rule34] Fallo cargando fila '${cat.title}': ${err?.message || err}`);
     }
     return null;
   });
@@ -904,7 +904,7 @@ export async function search(query) {
         return await queryBooruApi(hostConfig, queryVariants, page, asSeries);
       }
     } catch (err) {
-      logWarn(`[VideoBooru] Error buscando en host '${hostConfig.name}': ${err?.message || err}`);
+      logWarn(`[rule34] Error buscando en host '${hostConfig.name}': ${err?.message || err}`);
       return [];
     }
   });
