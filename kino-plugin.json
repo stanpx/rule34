@@ -1,38 +1,26 @@
 {
-  "id": "videobooru",
-  "name": "VideoBooru",
-  "version": "1.0.0",
+  "id": "rule34",
+  "name": "Rule 34",
+  "version": "1.0.1",
   "apiVersion": 6,
   "entry": "plugin.js",
   "icon": "icon.png",
-  "description": "⚠️ CONTENIDO NO APTO PARA SENSIBLES (+18). Este plugin agrega fuentes de video de la comunidad que pueden incluir material poco apropiado. Al instalar, aceptas ser mayor de edad y asumes total responsabilidad por el contenido que decidas visualizar. Este proyecto es con fines educativos y de ficción. No nos hacemos responsables. Sección 230",
+  "description": "⚠️ CONTENIDO NO APTO PARA SENSIBLES (+16). Este plugin agrega fuentes de video de la comunidad que pueden incluir material poco apropiado. Al instalar, aceptas ser mayor de edad y asumes total responsabilidad por el contenido que decidas visualizar. Este proyecto es con fines educativos y de ficción. No nos hacemos responsables. Sección 230",
   "author": "stanpx",
   "homepage": "https://github.com/stanpx/rule34",
   "color": "#FF5500",
   "hosts": [
-    "catbooru.donmai.us",
-    "cdn.donmai.us",
     "danbooru.donmai.us",
     "rule34.us",
     "video.rule34.us",
     "rule34video.com",
-    "*.rule34video.com",
     "rule34.paheal.net",
-    "paheal-cdn.net",
-    "*.paheal-cdn.net",
     "rule34.xyz",
-    "*.rule34.xyz",
-    "b-cdn.net",
-    "*.b-cdn.net",
     "rule34gen.com",
-    "*.rule34gen.com",
     "booru.allthefallen.moe",
-    "*.allthefallen.moe",
-    "boomio-cdn.com",
-    "*.boomio-cdn.com",
-    "danbooru.donmai.us",
+    "booru.org",
     "xbooru.com",
-    "e621.net",
+    "e621.net"
   ],
   "streamHosts": "any",
   "categories": [
@@ -46,5 +34,9 @@
     "browse",
     "resolve",
     "episodes"
-  ]
+  ],
+  "signature": {
+    "authorKey": "6f5fc734f744d974a1fe0c21a0e7edf6e0c9ff2e35a01ffc12d9abad629d55ef",
+    "value": "0f860f43ab6e6f6068f53869a51ae38bd64c079e8fc47df3395e54bb01e97840b1c9e380975559ccdafd339be12ec5bb0cdf0984e33ca6555e18eb57c77be50a"
+  }
 }
