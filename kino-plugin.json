@@ -1,7 +1,7 @@
 {
   "id": "rule34",
   "name": "Rule 34",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "apiVersion": 6,
   "entry": "plugin.js",
   "icon": "icon.png",
@@ -15,6 +15,24 @@
       "label": "Cookie ATF (opcional)",
       "hint": "Cookie de sesión o anti-bot para AllTheFallen",
       "type": "text"
+    },
+    {
+      "key": "r34UserId",
+      "label": "Rule34 User ID (opcional)",
+      "hint": "ID de usuario para la API de Rule34.xxx",
+      "type": "text"
+    },
+    {
+      "key": "r34ApiKey",
+      "label": "Rule34 API Key (opcional)",
+      "hint": "Clave API generada en tu cuenta de Rule34.xxx",
+      "type": "text"
+    },
+    {
+      "key": "r34Cookie",
+      "label": "Cookie Rule34 (opcional)",
+      "hint": "Cookie de sesión para Rule34.xxx en caso de CAPTCHA",
+      "type": "text"
     }
   ],
   "hosts": [
@@ -23,13 +41,25 @@
     "video.rule34.us",
     "rule34video.com",
     "rule34.paheal.net",
+    "paheal.net",
+    "paheal-cdn.net",
+    "r34i.paheal-cdn.net",
     "rule34.xyz",
     "rule34gen.com",
     "booru.allthefallen.moe",
+    "allthefallen.moe",
     "booru.org",
     "xbooru.com",
     "rule34.xxx",
+    "api.rule34.xxx",
+    "api-cdn-us-mp4.rule34.xxx",
+    "nymp4.rule34.xxx",
+    "wpm.rule34.xxx",
+    "us.rule34.xxx",
+    "boomio-cdn.com",
+    "us-cdn15-prem.boomio-cdn.com",
     "e621.net",
+    "static1.e621.net",
     "safebooru.org"
   ],
   "streamHosts": "any",
@@ -47,6 +77,6 @@
   ],
   "signature": {
     "authorKey": "6f5fc734f744d974a1fe0c21a0e7edf6e0c9ff2e35a01ffc12d9abad629d55ef",
-    "value": "ff57cf28510adcb16379e3f41f3896a9b073a01b8e99a3d48047a2077f0e619abdb94b5cfa50a921c4b27d9279bbb3cbadec881dd6676ded264bfac4c4e32804"
+    "value": "5c3213855fd4f0bfe06da6ab0ce23934e3fca76d70b70fe4cb5248d8ed70cb7ffb2f2d9382efae2882088c3a5aeaa903863993ffc2be30ee422ec8ac0897ae00"
   }
 }

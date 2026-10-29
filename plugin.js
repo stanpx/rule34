@@ -51,7 +51,7 @@ export const BOORU_HOSTS = [
   {
     id: "r34xxx",
     name: "Rule34 XXX",
-    base: "https://rule34.xxx",
+    base: "https://api.rule34.xxx",
     type: "booru_api",
     enabled: true
   },
@@ -206,6 +206,31 @@ function getMimeType(url, hintMime = "") {
 }
 
 /**
+ * Normaliza y sanea URLs de video para reproductores nativos como ExoPlayer.
+ * Colapsa barras dobles consecutivas en la ruta (//images/ -> /images/) conservando el protocolo.
+ */
+function normalizeVideoUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== "string") return rawUrl;
+  let clean = rawUrl.trim();
+  clean = clean.replace(/^(https?:\/\/)(.*)$/, (match, proto, rest) => {
+    return proto + rest.replace(/\/{2,}/g, "/");
+  });
+  return clean;
+}
+
+/**
+ * Parsea un JSON de forma segura devolviendo null ante cualquier error de sintaxis
+ */
+function tryParse(val) {
+  if (typeof val !== "string") return null;
+  try {
+    return JSON.parse(val);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Registro de mensajes en la consola o log de Kino
  */
 function logInfo(...args) {
@@ -290,22 +315,85 @@ const DEFAULT_ATF_COOKIE = "atf-anti-bot=1793846173.zG9F8Jlj.mNds6L9QMqhBEZ5Zydo
  * Obtiene la cookie para AllTheFallen (configurada por el usuario o token anti-bot por defecto)
  */
 function getAtfCookie() {
-  if (typeof kino !== "undefined" && kino.config) {
+  if (typeof kino !== "undefined" && kino.config && typeof kino.config.get === "function") {
     const custom = kino.config.get("atfCookie");
-    if (custom && custom.trim()) return custom.trim();
+    if (custom && typeof custom === "string" && custom.trim()) return custom.trim();
   }
   return DEFAULT_ATF_COOKIE;
 }
 
 /**
- * Aplica cabeceras específicas por host (User-Agent específico para e621 o Cookie para AllTheFallen)
+ * Parámetros de autenticación para la API de Rule34.xxx (user_id & api_key)
+ */
+function getR34AuthParams() {
+  if (typeof kino !== "undefined" && kino.config && typeof kino.config.get === "function") {
+    const uid = kino.config.get("r34UserId");
+    const key = kino.config.get("r34ApiKey");
+    if (uid && key && String(uid).trim() && String(key).trim()) {
+      return `&user_id=${encodeURIComponent(String(uid).trim())}&api_key=${encodeURIComponent(String(key).trim())}`;
+    }
+  }
+  return "";
+}
+
+/**
+ * Cookie de sesión opcional para Rule34.xxx
+ */
+function getR34Cookie() {
+  if (typeof kino !== "undefined" && kino.config && typeof kino.config.get === "function") {
+    const custom = kino.config.get("r34Cookie");
+    if (custom && typeof custom === "string" && custom.trim()) return custom.trim();
+  }
+  return "";
+}
+
+/**
+ * Construye encabezados HTTP de reproducción requeridos según el servidor de origen del video
+ */
+function buildStreamHeaders(videoUrl, targetHost = "") {
+  const headers = {
+    "User-Agent": USER_AGENT
+  };
+
+  const lowerUrl = (videoUrl || "").toLowerCase();
+  const lowerHost = (targetHost || "").toLowerCase();
+
+  if (lowerUrl.includes("rule34.xxx") || lowerHost.includes("rule34.xxx")) {
+    headers["Referer"] = "https://rule34.xxx/";
+    const cookie = getR34Cookie();
+    if (cookie) headers["Cookie"] = cookie;
+  } else if (lowerUrl.includes("allthefallen.moe") || lowerHost.includes("allthefallen.moe")) {
+    headers["Referer"] = "https://booru.allthefallen.moe/";
+    headers["Cookie"] = getAtfCookie();
+  } else if (lowerUrl.includes("e621.net") || lowerHost.includes("e621.net")) {
+    headers["User-Agent"] = "Rule34Kino/1.0.8 (by stanpx on github)";
+    headers["Referer"] = "https://e621.net/";
+  } else if (lowerUrl.includes("boomio-cdn.com") || lowerUrl.includes("rule34video.com") || lowerHost.includes("rule34video.com")) {
+    headers["Referer"] = "https://rule34video.com/";
+  } else if (lowerUrl.includes("paheal") || lowerHost.includes("paheal")) {
+    headers["Referer"] = "https://rule34.paheal.net/";
+  } else if (lowerUrl.includes("rule34.us") || lowerHost.includes("rule34.us")) {
+    headers["Referer"] = "https://rule34.us/";
+  } else if (targetHost) {
+    headers["Referer"] = targetHost.endsWith("/") ? targetHost : targetHost + "/";
+  }
+
+  return headers;
+}
+
+/**
+ * Aplica cabeceras específicas por host (User-Agent específico para e621 o Cookie para AllTheFallen/Rule34)
  */
 function applyHostSpecificHeaders(headers, targetUrl) {
   if (targetUrl.includes("e621.net")) {
-    headers["User-Agent"] = "Rule34Kino/1.0.7 (by stanpx on github)";
+    headers["User-Agent"] = "Rule34Kino/1.0.8 (by stanpx on github)";
   }
   if (targetUrl.includes("allthefallen.moe")) {
     headers["Cookie"] = getAtfCookie();
+  }
+  if (targetUrl.includes("rule34.xxx")) {
+    const cookie = getR34Cookie();
+    if (cookie) headers["Cookie"] = cookie;
   }
 }
 
@@ -586,7 +674,7 @@ function normalizeBooruPost(raw, hostConfig, asSeries = false) {
     if (isStatic) return null;
   }
 
-  const cleanVideoUrl = abs(videoUrl || raw.file_url, hostConfig.base);
+  const cleanVideoUrl = normalizeVideoUrl(abs(videoUrl || raw.file_url, hostConfig.base));
 
   // Extraer miniatura
   let previewUrl = raw.preview_file_url || raw.preview_url || raw.sample_url || raw.thumbnail;
@@ -672,7 +760,7 @@ async function searchPahealHost(hostConfig, queryVariants, page = 1) {
         seenIds.add(postId);
 
         const fileM = block.match(/href=['"](https?:\/\/[^'"]*paheal-cdn\.net\/[^'"]+)['"][^>]*>File Only<\/a>/i);
-        const directUrl = fileM ? fileM[1] : "";
+        const directUrl = fileM ? normalizeVideoUrl(fileM[1]) : "";
 
         const posterM = block.match(/src=['"](https?:\/\/[^'"]*paheal\.net\/[^'"]+)['"]/i);
         const poster = posterM ? posterM[1] : "";
@@ -729,12 +817,13 @@ async function queryBooruApi(hostConfig, queryVariants, page = 1, asSeries = fal
     if (results.length >= 20) break;
     const encoded = encodeURIComponent(tag);
 
+    const r34Auth = cleanHost.includes("rule34.xxx") ? getR34AuthParams() : "";
     // Variantes de endpoints REST para Boorus (priorizando animados/videos primero)
     const endpoints = [
       `${cleanHost}/posts.json?tags=${encoded}+animated&limit=40&page=${page}`,
       `${cleanHost}/posts.json?tags=${encoded}&limit=50&page=${page}`,
-      `${cleanHost}/index.php?page=dapi&s=post&q=index&json=1&tags=${encoded}+animated&limit=40&pid=${page}`,
-      `${cleanHost}/index.php?page=dapi&s=post&q=index&json=1&tags=${encoded}&limit=50&pid=${page}`,
+      `${cleanHost}/index.php?page=dapi&s=post&q=index&json=1&tags=${encoded}+animated&limit=40&pid=${page}${r34Auth}`,
+      `${cleanHost}/index.php?page=dapi&s=post&q=index&json=1&tags=${encoded}&limit=50&pid=${page}${r34Auth}`,
       `${cleanHost}/api/v1/json/search/posts?q=${encoded}&page=${page}`
     ];
 
@@ -786,14 +875,16 @@ function extractVideoStream(html, baseHost) {
     const src = m[1];
     const type = m[2] || "";
     if (isVideoUrl(src) || type.startsWith("video/")) {
-      return { url: abs(src, baseHost), mime: type || getMimeType(src) };
+      const cleanU = normalizeVideoUrl(abs(src, baseHost));
+      return { url: cleanU, mime: type || getMimeType(cleanU) };
     }
   }
 
   // 2. Etiqueta <video src="...">
   const videoM = html.match(/<video[^>]+src=["']([^"']+)["']/i);
   if (videoM && isVideoUrl(videoM[1])) {
-    return { url: abs(videoM[1], baseHost), mime: getMimeType(videoM[1]) };
+    const cleanU = normalizeVideoUrl(abs(videoM[1], baseHost));
+    return { url: cleanU, mime: getMimeType(cleanU) };
   }
 
   // 3. Variables JavaScript de reproductores web comunes
@@ -811,7 +902,8 @@ function extractVideoStream(html, baseHost) {
     if (match && match[1]) {
       const decoded = match[1].replace(/\\/g, "");
       if (isVideoUrl(decoded)) {
-        return { url: abs(decoded, baseHost), mime: getMimeType(decoded) };
+        const cleanU = normalizeVideoUrl(abs(decoded, baseHost));
+        return { url: cleanU, mime: getMimeType(cleanU) };
       }
     }
   }
@@ -819,15 +911,16 @@ function extractVideoStream(html, baseHost) {
   // 4. Búsqueda de URLs CDN completas de video en el script/markup
   const cdnMatch = html.match(/https?:\/\/[^\s"'<>]+\.(?:mp4|webm|m3u8)(?:\?[^\s"'<>]*)?/i);
   if (cdnMatch) {
-    const u = cdnMatch[0].replace(/&amp;/g, "&");
-    return { url: u, mime: getMimeType(u) };
+    const cleanU = normalizeVideoUrl(cdnMatch[0].replace(/&amp;/g, "&"));
+    return { url: cleanU, mime: getMimeType(cleanU) };
   }
 
   // 5. Enlaces de descarga directos (<a href="...mp4" download>)
   const downloadM = html.match(/<a[^>]+href=["']([^"']+\.(?:mp4|webm)[^"']*)["'][^>]*download/i) ||
                     html.match(/<a[^>]+download[^>]*href=["']([^"']+\.(?:mp4|webm)[^"']*)["']/i);
   if (downloadM && downloadM[1]) {
-    return { url: abs(downloadM[1], baseHost), mime: getMimeType(downloadM[1]) };
+    const cleanU = normalizeVideoUrl(abs(downloadM[1], baseHost));
+    return { url: cleanU, mime: getMimeType(cleanU) };
   }
 
   return null;
@@ -835,7 +928,7 @@ function extractVideoStream(html, baseHost) {
 
 /**
  * Función obligatoria de Kino: resolve(ref)
- * Devuelve la URL final ejecutable y los encabezados de reproducción para el reproductor
+ * Devuelve la URL final ejecutable y los encabezados de reproducción para el reproductor nativo (ExoPlayer/MPV)
  */
 export async function resolve(ref) {
   let target;
@@ -843,32 +936,53 @@ export async function resolve(ref) {
     try {
       target = JSON.parse(ref);
     } catch {
-      target = { path: ref };
+      // Si el texto es directamente un enlace a video
+      if (isVideoUrl(ref)) {
+        target = { url: ref, type: "direct" };
+      } else {
+        target = { path: ref };
+      }
     }
   } else if (ref && typeof ref === "object") {
-    target = ref.ref ? (typeof ref.ref === "string" ? JSON.parse(ref.ref) : ref.ref) : ref;
+    target = ref.ref ? (typeof ref.ref === "string" ? (tryParse(ref.ref) || { path: ref.ref }) : ref.ref) : ref;
   } else {
     throw kinoError("invalid_request", "Parámetro ref requerido para reproducir");
   }
 
-  // Si la referencia ya contenía la URL directa
+  // Si target.path es en realidad una URL de video directa
+  if (!target.url && target.path && isVideoUrl(target.path)) {
+    target.url = target.path;
+    target.type = "direct";
+  }
+
+  // 1. RESOLUCIÓN DIRECTA (archivos de video directos: mp4, webm, etc.)
   if (target.url && (isVideoUrl(target.url) || target.type === "direct")) {
-    const mime = getMimeType(target.url, target.mime);
-    const headers = {
-      "User-Agent": USER_AGENT,
-      ...(target.host ? { "Referer": target.host.endsWith("/") ? target.host : target.host + "/" } : {})
-    };
-    if (target.url.includes("allthefallen.moe") || (target.host && target.host.includes("allthefallen.moe"))) {
-      headers["Cookie"] = getAtfCookie();
+    const rawUrl = target.url;
+    const cleanUrl = normalizeVideoUrl(rawUrl);
+    const mime = getMimeType(cleanUrl, target.mime) || "video/mp4";
+    const headers = buildStreamHeaders(cleanUrl, target.host);
+
+    const alternatives = [];
+    if (cleanUrl.includes("?")) {
+      const urlWithoutQuery = cleanUrl.split("?")[0];
+      if (urlWithoutQuery !== cleanUrl && isVideoUrl(urlWithoutQuery)) {
+        alternatives.push({
+          url: urlWithoutQuery,
+          mime,
+          headers,
+          label: "Stream directo (sin parámetros)"
+        });
+      }
     }
+
     return {
-      url: target.url,
-      ...(mime ? { mime } : {}),
-      headers
+      url: cleanUrl,
+      mime,
+      headers,
+      ...(alternatives.length > 0 ? { alternatives } : {})
     };
   }
 
-  // Si requiere descargar la página HTML del video para extraer el stream
   const hostBase = target.host || BASE;
   let pagePath = target.path || target.url || "";
 
@@ -878,32 +992,138 @@ export async function resolve(ref) {
     const parsed = parseItems(searchHtml, 1, hostBase);
     if (parsed.length > 0) {
       const subTarget = JSON.parse(parsed[0].ref);
-      pagePath = subTarget.path;
+      pagePath = subTarget.path || subTarget.url;
     }
   }
 
   const pageUrl = abs(pagePath, hostBase);
   logInfo(`[rule34] Resolviendo video en: ${pageUrl}`);
-  const html = await fetchPage(pageUrl, hostBase);
-  const extracted = extractVideoStream(html, hostBase);
 
+  // 2. CASOS ESPECIALES DE POST BOORU (AllTheFallen, E621, Rule34.xxx, Paheal)
+  if (pageUrl.includes("allthefallen.moe/posts/")) {
+    const atfMatch = pageUrl.match(/\/posts\/(\d+)/);
+    if (atfMatch) {
+      const postId = atfMatch[1];
+      try {
+        const jsonUrl = `https://booru.allthefallen.moe/posts/${postId}.json`;
+        const postData = await fetchJson(jsonUrl, "https://booru.allthefallen.moe");
+        let vUrl = postData?.file_url;
+        if (!vUrl && postData?.md5) {
+          const h = postData.md5;
+          const ext = postData.file_ext || "mp4";
+          vUrl = `https://booru.allthefallen.moe/data/original/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}.${ext}`;
+        }
+        if (vUrl) {
+          const cleanVUrl = normalizeVideoUrl(vUrl);
+          return {
+            url: cleanVUrl,
+            mime: getMimeType(cleanVUrl) || "video/mp4",
+            headers: buildStreamHeaders(cleanVUrl, "https://booru.allthefallen.moe")
+          };
+        }
+      } catch (err) {
+        logWarn(`[rule34] Falló consulta JSON ATF para post ${postId}: ${err?.message || err}`);
+      }
+    }
+  }
+
+  if (pageUrl.includes("e621.net/posts/")) {
+    const e621Match = pageUrl.match(/\/posts\/(\d+)/);
+    if (e621Match) {
+      const postId = e621Match[1];
+      try {
+        const jsonUrl = `https://e621.net/posts/${postId}.json`;
+        const postData = await fetchJson(jsonUrl, "https://e621.net");
+        const fileObj = postData?.post?.file;
+        const vUrl = fileObj?.url;
+        if (vUrl) {
+          const cleanVUrl = normalizeVideoUrl(vUrl);
+          return {
+            url: cleanVUrl,
+            mime: getMimeType(cleanVUrl, fileObj?.ext) || "video/mp4",
+            headers: buildStreamHeaders(cleanVUrl, "https://e621.net")
+          };
+        }
+      } catch (err) {
+        logWarn(`[rule34] Falló consulta JSON e621 para post ${postId}: ${err?.message || err}`);
+      }
+    }
+  }
+
+  if (pageUrl.includes("rule34.xxx") && pageUrl.includes("id=")) {
+    const r34Match = pageUrl.match(/[?&]id=(\d+)/);
+    if (r34Match) {
+      const postId = r34Match[1];
+      const authParams = getR34AuthParams();
+      if (authParams) {
+        try {
+          const apiUrl = `https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&id=${postId}&json=1${authParams}`;
+          const postData = await fetchJson(apiUrl, "https://api.rule34.xxx");
+          let rawPost = Array.isArray(postData) ? postData[0] : (postData?.post?.[0] || postData);
+          if (rawPost && rawPost.file_url) {
+            const cleanVUrl = normalizeVideoUrl(rawPost.file_url);
+            return {
+              url: cleanVUrl,
+              mime: getMimeType(cleanVUrl) || "video/mp4",
+              headers: buildStreamHeaders(cleanVUrl, "https://rule34.xxx")
+            };
+          }
+        } catch (err) {
+          logWarn(`[rule34] Falló consulta API Rule34 para post ${postId}: ${err?.message || err}`);
+        }
+      }
+    }
+  }
+
+  if (pageUrl.includes("paheal.net/post/view/")) {
+    const pahealMatch = pageUrl.match(/\/post\/view\/(\d+)/);
+    if (pahealMatch) {
+      try {
+        const html = await fetchPage(pageUrl, "https://rule34.paheal.net");
+        const fileM = html.match(/href=['"](https?:\/\/[^'"]*paheal-cdn\.net\/[^'"]+)['"][^>]*>File Only<\/a>/i) ||
+                      html.match(/<video[^>]+src=['"]([^'"]+)['"]/i) ||
+                      html.match(/<source[^>]+src=['"]([^'"]+)['"]/i);
+        if (fileM && fileM[1]) {
+          const cleanVUrl = normalizeVideoUrl(fileM[1]);
+          return {
+            url: cleanVUrl,
+            mime: getMimeType(cleanVUrl) || "video/mp4",
+            headers: buildStreamHeaders(cleanVUrl, "https://rule34.paheal.net")
+          };
+        }
+      } catch (err) {
+        logWarn(`[rule34] Falló scraping Paheal para post ${pageUrl}: ${err?.message || err}`);
+      }
+    }
+  }
+
+  // 3. EXTRACCIÓN GENERAL DE REPRODUCTORES WEB (HTML)
+  let html;
+  try {
+    html = await fetchPage(pageUrl, hostBase);
+  } catch (err) {
+    if (pageUrl.includes("rule34.xxx")) {
+      throw kinoError(
+        "unavailable",
+        "Rule34.xxx requiere verificación anti-bot o credenciales API para acceder a publicaciones directamente. Usa el enlace directo del video (CDN) o configura tu User ID y API Key en los ajustes del plugin.",
+        "Verificación anti-bot requerida por Rule34.xxx"
+      );
+    }
+    throw err;
+  }
+
+  const extracted = extractVideoStream(html, hostBase);
   if (!extracted || !extracted.url) {
     throw kinoError("not_found", "No se encontró enlace de video en la página", "No fue posible extraer la transmisión de video.");
   }
 
-  const streamMime = extracted.mime || getMimeType(extracted.url, target.mime);
-
-  const headers = {
-    "User-Agent": USER_AGENT,
-    "Referer": hostBase.endsWith("/") ? hostBase : hostBase + "/"
-  };
-  if (extracted.url.includes("allthefallen.moe") || hostBase.includes("allthefallen.moe")) {
-    headers["Cookie"] = getAtfCookie();
-  }
+  const cleanExtractedUrl = normalizeVideoUrl(extracted.url);
+  const streamMime = extracted.mime || getMimeType(cleanExtractedUrl, target.mime) || "video/mp4";
+  const headers = buildStreamHeaders(cleanExtractedUrl, hostBase);
 
   return {
-    url: extracted.url,
-    ...(streamMime ? { mime: streamMime } : {}),
+    url: cleanExtractedUrl,
+    mime: streamMime,
     headers
   };
 }
