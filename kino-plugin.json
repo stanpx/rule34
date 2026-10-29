@@ -1,7 +1,7 @@
 {
   "id": "rule34",
   "name": "Rule 34",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "apiVersion": 6,
   "entry": "plugin.js",
   "icon": "icon.png",
@@ -9,6 +9,14 @@
   "author": "stanpx",
   "homepage": "https://github.com/stanpx/rule34",
   "color": "#FF5500",
+  "settings": [
+    {
+      "key": "atfCookie",
+      "label": "Cookie ATF (opcional)",
+      "hint": "Cookie de sesión o anti-bot para AllTheFallen",
+      "type": "text"
+    }
+  ],
   "hosts": [
     "danbooru.donmai.us",
     "rule34.us",
@@ -39,6 +47,6 @@
   ],
   "signature": {
     "authorKey": "6f5fc734f744d974a1fe0c21a0e7edf6e0c9ff2e35a01ffc12d9abad629d55ef",
-    "value": "58db43b03b6ca283a2ef2d6a5ca5412c775bf4ad5552b43af0621a28f2256963234ae5a85908abe3a04ed2647aa5dfcbb93269ecfc110ee5ceb2a5d7c184e607"
+    "value": "8a8a5fe112c49d64b05be7f27877fc3b5b5aef70febd6ccb6e077c31fa3b2a9c5cbabfd9ba7eda957555c534bfe5555a4742122fa83183a03534a8e8b55ffc09"
   }
 }

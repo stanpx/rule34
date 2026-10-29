@@ -273,6 +273,21 @@ function normalizeSearchQueries(rawQuery) {
 // ============================================================================
 
 /**
+ * Aplica cabeceras específicas por host (User-Agent específico para e621 o Cookie para AllTheFallen)
+ */
+function applyHostSpecificHeaders(headers, targetUrl) {
+  if (targetUrl.includes("e621.net")) {
+    headers["User-Agent"] = "Rule34Kino/1.0.3 (by stanpx on github)";
+  }
+  if (targetUrl.includes("allthefallen.moe")) {
+    const atfCookie = typeof kino !== "undefined" && kino.config ? kino.config.get("atfCookie") : null;
+    if (atfCookie) {
+      headers["Cookie"] = atfCookie;
+    }
+  }
+}
+
+/**
  * Petición HTTP GET para obtener texto HTML
  */
 async function fetchPage(pathOrUrl, baseHost = BASE) {
@@ -280,6 +295,7 @@ async function fetchPage(pathOrUrl, baseHost = BASE) {
   const headers = Object.assign({}, DEFAULT_HEADERS, {
     "Referer": baseHost.endsWith("/") ? baseHost : baseHost + "/"
   });
+  applyHostSpecificHeaders(headers, url);
 
   if (typeof kino !== "undefined" && typeof kino.fetch === "function") {
     const res = await kino.fetch(url, {
@@ -314,6 +330,7 @@ async function fetchJson(url, baseHost = BASE) {
     "Accept": "application/json, text/plain, */*",
     "Referer": baseHost.endsWith("/") ? baseHost : baseHost + "/"
   });
+  applyHostSpecificHeaders(headers, fullUrl);
 
   if (typeof kino !== "undefined" && typeof kino.fetch === "function") {
     const res = await kino.fetch(fullUrl, {
