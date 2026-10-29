@@ -48,6 +48,13 @@ export const BOORU_HOSTS = [
     type: "booru_api",
     enabled: true
   },
+   {
+    id: "r34xxx",
+    name: "Paheal Booru",
+    base: "https://rule34.xxx",
+    type: "booru_api",
+    enabled: true
+  },
   {
     id: "r34e621",
     name: "E621",
