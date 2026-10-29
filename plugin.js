@@ -366,7 +366,7 @@ function buildStreamHeaders(videoUrl, targetHost = "") {
     headers["Referer"] = "https://booru.allthefallen.moe/";
     headers["Cookie"] = getAtfCookie();
   } else if (lowerUrl.includes("e621.net") || lowerHost.includes("e621.net")) {
-    headers["User-Agent"] = "Rule34Kino/1.0.8 (by stanpx on github)";
+    headers["User-Agent"] = "Rule34Kino/1.0.9 (by stanpx on github)";
     headers["Referer"] = "https://e621.net/";
   } else if (lowerUrl.includes("boomio-cdn.com") || lowerUrl.includes("rule34video.com") || lowerHost.includes("rule34video.com")) {
     headers["Referer"] = "https://rule34video.com/";
@@ -386,7 +386,7 @@ function buildStreamHeaders(videoUrl, targetHost = "") {
  */
 function applyHostSpecificHeaders(headers, targetUrl) {
   if (targetUrl.includes("e621.net")) {
-    headers["User-Agent"] = "Rule34Kino/1.0.8 (by stanpx on github)";
+    headers["User-Agent"] = "Rule34Kino/1.0.9 (by stanpx on github)";
   }
   if (targetUrl.includes("allthefallen.moe")) {
     headers["Cookie"] = getAtfCookie();
